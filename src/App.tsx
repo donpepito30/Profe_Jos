@@ -15,7 +15,7 @@ export default function App() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await fetch('https://profe-jos.jj863620.workers.dev/api/metrics');
+        const res = await fetch('/api/metrics');
         if (res.ok) {
           const data = await res.json();
           if (data.results) {
@@ -81,7 +81,8 @@ export default function App() {
 
     try {
       // Connect to the Cloudflare Worker via WebSocket
-      const wsUrl = 'wss://profe-jos.jj863620.workers.dev/api/session/connect';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/api/session/connect`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
