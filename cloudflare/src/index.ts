@@ -36,6 +36,7 @@ REGLAS DE INTERACCIÓN Y VOZ:
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const cleanPath = url.pathname.replace(/\/+$/, "") || "/";
 
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
@@ -54,13 +55,13 @@ export default {
     };
 
     // Rutas de API
-    if (url.pathname.startsWith("/api/")) {
+    if (cleanPath.startsWith("/api")) {
       if (request.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders });
       }
 
       // 1. RUTA DE WEBSOCKET REALTIME (Walkie-Talkie con Gemini)
-      if (url.pathname === "/api/session/connect") {
+      if (cleanPath === "/api/session/connect") {
         if (request.headers.get("Upgrade") !== "websocket") {
           return new Response("Expected Upgrade: websocket", { status: 426, headers: corsHeaders });
         }
@@ -180,10 +181,22 @@ export default {
       }
 
       // 2. RUTA DE HTTP FALLBACK (/api/tutor)
-      if (url.pathname === "/api/tutor" && request.method === "POST") {
+      if (cleanPath === "/api/tutor") {
+        if (request.method === "GET") {
+          return makeJsonResponse({ status: "ok", message: "API de Profe Juan lista para peticiones POST" });
+        }
+
+        if (request.method !== "POST") {
+          return makeJsonResponse({ error: "Método HTTP no permitido. Use POST." }, 405);
+        }
+
         try {
           const body: any = await request.json();
           const textMessage = body.message;
+
+          if (!textMessage) {
+            return makeJsonResponse({ error: "Falta el mensaje en la solicitud" }, 400);
+          }
 
           if (!env.GEMINI_API_KEY) {
             return makeJsonResponse({ error: "Falta configurar GEMINI_API_KEY en las variables de Cloudflare" }, 500);
@@ -256,7 +269,7 @@ export default {
       }
 
       // 3. RUTA DE BASE DE DATOS (Historial de Evaluaciones para el Monitor del Docente)
-      if (url.pathname === "/api/metrics") {
+      if (cleanPath === "/api/metrics") {
         try {
           if (!env.DB) return makeJsonResponse({ error: "Falta configurar la Base de Datos (Variable DB) en Cloudflare" }, 500);
           
