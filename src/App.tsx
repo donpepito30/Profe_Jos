@@ -61,39 +61,60 @@ export default function App() {
     setIsProcessing(true);
 
     try {
-      const response = await fetch('/api/tutor', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: text,
-          history: newMessages,
-        }),
-      });
+      // Connect to the Cloudflare Worker via WebSocket
+      const wsUrl = 'wss://profe-jos.jj863620.workers.dev/api/session/connect';
+      const ws = new WebSocket(wsUrl);
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch response');
-      }
+      ws.onopen = () => {
+        // Send the message as an audio transcript event
+        ws.send(JSON.stringify({
+          type: 'audio_transcript',
+          text: text
+        }));
+      };
 
-      const data: TutorResponse = await response.json();
-      
-      setLastResponse(data);
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.speech_text,
-        metadata: {
-          dcd_evaluated: data.dcd_evaluated,
-          achievement_level: data.achievement_level,
-          next_action: data.next_action,
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'tutor_response') {
+            const responseData: TutorResponse = data.data;
+            setLastResponse(responseData);
+            
+            const assistantMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: responseData.speech_text,
+              metadata: {
+                dcd_evaluated: responseData.dcd_evaluated,
+                achievement_level: responseData.achievement_level,
+                next_action: responseData.next_action,
+              }
+            };
+
+            setMessages(prev => [...prev, assistantMessage]);
+            speakText(responseData.speech_text);
+            setIsProcessing(false);
+            ws.close();
+          } else if (data.error) {
+            console.error("Worker returned error:", data.error);
+            alert("Error del Profe Juan: " + data.error);
+            setIsProcessing(false);
+            ws.close();
+          }
+        } catch (e) {
+          console.error("Error parsing WebSocket message:", e);
+          setIsProcessing(false);
+          ws.close();
         }
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
-      speakText(data.speech_text);
-
+      ws.onerror = (error) => {
+        console.error("WebSocket Error:", error);
+        alert("Hubo un problema conectando con el servidor en la nube.");
+        setIsProcessing(false);
+      };
+      
     } catch (error) {
       console.error("Error calling tutor API:", error);
       // Fallback behavior on error
