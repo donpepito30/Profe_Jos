@@ -37,13 +37,32 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
+    const makeJsonResponse = (data: any, status = 200) => {
+      return new Response(JSON.stringify(data), {
+        status,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      });
+    };
+
     // Rutas de API
     if (url.pathname.startsWith("/api/")) {
-      
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
       // 1. RUTA DE WEBSOCKET REALTIME (Walkie-Talkie con Gemini)
       if (url.pathname === "/api/session/connect") {
         if (request.headers.get("Upgrade") !== "websocket") {
-          return new Response("Expected Upgrade: websocket", { status: 426 });
+          return new Response("Expected Upgrade: websocket", { status: 426, headers: corsHeaders });
         }
 
         const [client, server] = Object.values(new WebSocketPair());
@@ -167,7 +186,7 @@ export default {
           const textMessage = body.message;
 
           if (!env.GEMINI_API_KEY) {
-            return Response.json({ error: "Falta la GEMINI_API_KEY en Cloudflare" }, { status: 500 });
+            return makeJsonResponse({ error: "Falta configurar GEMINI_API_KEY en las variables de Cloudflare" }, 500);
           }
 
           const formattedHistory = Array.isArray(body.history) 
@@ -208,7 +227,7 @@ export default {
 
           const aiData: any = await geminiResponse.json();
           if (aiData.error) {
-            return Response.json({ error: "Error de Gemini: " + aiData.error.message }, { status: 500 });
+            return makeJsonResponse({ error: "Error de Gemini: " + aiData.error.message }, 500);
           }
 
           const parsedResponse = JSON.parse(aiData.candidates[0].content.parts[0].text);
@@ -230,28 +249,28 @@ export default {
             }
           }
 
-          return Response.json(parsedResponse);
+          return makeJsonResponse(parsedResponse);
         } catch (e: any) {
-          return Response.json({ error: e.message }, { status: 500 });
+          return makeJsonResponse({ error: e.message }, 500);
         }
       }
 
       // 3. RUTA DE BASE DE DATOS (Historial de Evaluaciones para el Monitor del Docente)
       if (url.pathname === "/api/metrics") {
         try {
-          if (!env.DB) return Response.json({ error: "Falta configurar la Base de Datos (Variable DB) en Cloudflare" }, { status: 500 });
+          if (!env.DB) return makeJsonResponse({ error: "Falta configurar la Base de Datos (Variable DB) en Cloudflare" }, 500);
           
           const { results } = await env.DB.prepare(
             "SELECT * FROM evaluations ORDER BY created_at DESC LIMIT 50"
           ).all();
           
-          return Response.json({ success: true, results });
+          return makeJsonResponse({ success: true, results });
         } catch (e: any) {
-          return Response.json({ error: "Error leyendo la BD D1: " + e.message }, { status: 500 });
+          return makeJsonResponse({ error: "Error leyendo la BD D1: " + e.message }, 500);
         }
       }
       
-      return new Response("API No encontrada", { status: 404 });
+      return makeJsonResponse({ error: "API No encontrada" }, 404);
     }
 
     // Para cualquier otra ruta, servir la aplicación web estática de React

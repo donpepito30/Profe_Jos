@@ -211,8 +211,14 @@ export default function App() {
           setMessages(prev => [...prev, assistantMessage]);
           speakText(responseData.speech_text);
         } else {
-          const errData: any = await res.json().catch(() => ({}));
-          alert("Profe Juan dice: " + (errData.error || "Error de conexión HTTP"));
+          let errorText = "";
+          try {
+            const errData: any = await res.json();
+            errorText = errData.error || errData.message || "";
+          } catch {
+            errorText = await res.text().catch(() => "");
+          }
+          alert("Profe Juan dice: " + (errorText || `Error de conexión HTTP (${res.status})`));
         }
       } catch (httpErr: any) {
         console.error("Error de conexión HTTP fallback:", httpErr);
