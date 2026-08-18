@@ -59,7 +59,7 @@ async function startServer() {
       })) || [];
 
       const chatSession = ai.chats.create({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         config: {
           systemInstruction,
           responseMimeType: "application/json",
@@ -74,6 +74,24 @@ async function startServer() {
       console.error("Error in /api/tutor:", error);
       res.status(500).json({ error: "Failed to process request" });
     }
+  });
+
+  // Mock route for local development so /api/metrics doesn't fail
+  app.get("/api/metrics", (req, res) => {
+    // In local dev, we don't have D1 easily bound to the Express server,
+    // so we return mock data so the dashboard doesn't crash.
+    res.json({
+      success: true,
+      results: [
+        {
+          id: 1,
+          dcd_evaluated: "M.2.1.1. (Desarrollo Local)",
+          achievement_level: "A",
+          next_action: "CONTINUE",
+          created_at: new Date().toISOString()
+        }
+      ]
+    });
   });
 
   // Vite middleware for development
@@ -96,14 +114,14 @@ async function startServer() {
   });
 
   // Attach WebSocket Server to simulate Cloudflare Durable Objects + WebRTC signaling/audio channel
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ server, path: '/api/session/connect' });
   
   wss.on('connection', (ws) => {
     console.log('Realtime Client connected via WebSocket');
     
     // Create a stateful chat session mimicking a Durable Object's memory
     const chatSession = ai.chats.create({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.6-flash",
       config: {
         systemInstruction,
         responseMimeType: "application/json",

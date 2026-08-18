@@ -51,15 +51,20 @@ export function WalkieTalkie({ onSend, isProcessing, isSpeaking, onStopSpeaking 
 
   const handleStartRecording = useCallback(() => {
     setError(null);
-    if (recognitionRef.current) {
+    if (recognitionRef.current && !isRecording) {
       try {
         recognitionRef.current.start();
         setIsRecording(true);
-      } catch (err) {
-        console.error("Could not start recognition", err);
+      } catch (err: any) {
+        if (err.name === 'InvalidStateError') {
+          // Already started, safely ignore
+          setIsRecording(true);
+        } else {
+          console.error("Could not start recognition", err);
+        }
       }
     }
-  }, []);
+  }, [isRecording]);
 
   const handleStopRecording = useCallback(() => {
     if (recognitionRef.current && isRecording) {
