@@ -8,7 +8,26 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [lastResponse, setLastResponse] = useState<TutorResponse | null>(null);
+  const [dbHistory, setDbHistory] = useState<any[]>([]);
   const synthRef = useRef<SpeechSynthesis | null>(null);
+
+  // Fetch historical data from D1 Database via Worker
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('https://profe-jos.jj863620.workers.dev/api/metrics');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results) {
+            setDbHistory(data.results);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching D1 history:", err);
+      }
+    };
+    fetchHistory();
+  }, [lastResponse]); // Refresh when a new response comes in
 
   useEffect(() => {
     synthRef.current = window.speechSynthesis;
@@ -208,31 +227,35 @@ export default function App() {
           </div>
         )}
 
-        {/* Conversation Log */}
-        <div className="flex-1">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Registro de Sesión</h3>
-          <div className="space-y-4">
-            {messages.map((msg) => (
-              <div 
-                key={msg.id} 
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-              >
-                <span className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">
-                  {msg.role === 'user' ? 'Estudiante' : 'Profe Juan'}
-                </span>
-                <div 
-                  className={`px-4 py-3 rounded-2xl max-w-[85%] text-sm ${
-                    msg.role === 'user' 
-                      ? 'bg-blue-500 text-white rounded-br-none' 
-                      : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'
-                  }`}
-                >
-                  {msg.content}
+        {/* Conversation & Database Log */}
+        <div className="flex-1 mt-6">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Historial de Evaluaciones (Base de Datos D1)</h3>
+          <div className="space-y-3">
+            {dbHistory.map((evalRecord, idx) => (
+              <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm flex flex-col space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                    DCD: <span className="text-indigo-600 font-mono">{evalRecord.dcd_evaluated}</span>
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold
+                    ${evalRecord.achievement_level === 'A' ? 'bg-green-100 text-green-700' : 
+                      evalRecord.achievement_level === 'EP' ? 'bg-yellow-100 text-yellow-700' : 
+                      'bg-red-100 text-red-700'}`}>
+                    {evalRecord.achievement_level}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-slate-500">
+                    Acción: {evalRecord.next_action}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {new Date(evalRecord.created_at).toLocaleTimeString()}
+                  </span>
                 </div>
               </div>
             ))}
-            {messages.length === 0 && (
-              <p className="text-sm text-slate-400 text-center mt-8">No hay mensajes en el registro.</p>
+            {dbHistory.length === 0 && (
+              <p className="text-sm text-slate-400 text-center mt-8">No hay registros guardados en la base de datos aún.</p>
             )}
           </div>
         </div>
