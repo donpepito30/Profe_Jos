@@ -1,0 +1,10 @@
+{
+  "name": "Profe Juan - Aulas Activas",
+  "description": "Un tutor inteligente y cálido por voz estilo Walkie-Talkie para niños en Ecuador, usando objetos físicos.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
