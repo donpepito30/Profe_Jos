@@ -170,6 +170,14 @@ export default {
             return Response.json({ error: "Falta la GEMINI_API_KEY en Cloudflare" }, { status: 500 });
           }
 
+          const formattedHistory = Array.isArray(body.history) 
+            ? body.history.map((msg: any) => ({
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: msg.content }]
+              }))
+            : [];
+          formattedHistory.push({ role: "user", parts: [{ text: textMessage }] });
+
           const geminiResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${env.GEMINI_API_KEY}`,
             {
@@ -177,7 +185,7 @@ export default {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 systemInstruction: { parts: [{ text: systemInstruction }] },
-                contents: [{ role: "user", parts: [{ text: textMessage }] }],
+                contents: formattedHistory,
                 generationConfig: {
                   responseMimeType: "application/json",
                   responseSchema: {
