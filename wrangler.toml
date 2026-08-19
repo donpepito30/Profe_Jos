@@ -1,0 +1,13 @@
+name = "aulas-activas-profe-juan"
+main = "cloudflare/src/index.ts"
+compatibility_date = "2024-04-05"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# D1 Database binding for storing DCD evaluations
+[[d1_databases]]
+binding = "DB"
+database_name = "aulas-activas-dcd"
+database_id = "YOUR_D1_DATABASE_ID"
