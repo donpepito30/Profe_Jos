@@ -12,13 +12,13 @@ Para mantener una latencia ultra-baja (menor a 50ms) simulando un Walkie-Talkie 
 
 ## Despliegue
 
-### 1. Preparar la Base de Datos D1
+### 1. Preparar la Base de Datos D1 (opcional)
 ```bash
 npx wrangler d1 create aulas-activas-dcd
 ```
-*Copia el `database_id` que te devuelve y pégalo en el `wrangler.toml`.*
+*Copia el `database_id` que te devuelve y agrega el bloque `[[d1_databases]]` al `wrangler.toml`.*
 
-### 2. Aplicar el Schema
+### 2. Aplicar el Schema (si habilitaste D1)
 ```bash
 npx wrangler d1 execute aulas-activas-dcd --file=./schema.sql
 ```
