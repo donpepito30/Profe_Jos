@@ -5,6 +5,8 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { WebSocketServer } from "ws";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_HISTORY_MESSAGES = 8;
 
 const systemInstruction = `Eres el "Profe Juan", un tutor de refuerzo escolar inteligente, cálido y empático para niños de Educación General Básica (EGB) de la Malla Curricular Oficial de Ecuador (Ministerio de Educación).
 
@@ -34,6 +36,7 @@ REGLAS DE INTERACCIÓN Y VOZ:
 2. ENFOQUE EN OBJETOS FÍSICOS: Nunca pidas resolver cosas en la pantalla. Pide manipular objetos de la casa (ej. "Separa 6 frejoles en dos montones iguales" o "Busca las letras grandes en la funda de sal").
 3. TONO Y LENGUAJE ECUATORIANO: Usa un español ecuatoriano cálido, motivador y cercano. Utiliza expresiones respetuosas como "¡Excelente trabajo!", "Vamos a intentarlo juntos", y reconoce vocabulario local (ej. choclo, funda, chapa, granos).
 4. PEDAGOGÍA SOCRÁTICA: Si el niño se equivoca, no le des la respuesta correcta. Hazle una pregunta sencilla para que revise sus objetos en la mesa.`;
+
 
 const responseSchema: Schema = {
   type: Type.OBJECT,
@@ -80,12 +83,17 @@ async function startServer() {
   // Existing HTTP API fallback
   app.post("/api/tutor", async (req, res) => {
     try {
-      const { message, history } = req.body;
-      if (!message) return res.status(400).json({ error: "Message is required" });
+      const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+      const history = Array.isArray(req.body.history) ? req.body.history : [];
+      if (!message || message.length > MAX_MESSAGE_LENGTH) {
+        return res.status(400).json({ error: "El mensaje debe tener entre 1 y 2000 caracteres." });
+      }
 
-      const formattedHistory = history?.map((msg: any) => ({
+      const formattedHistory = history.slice(-MAX_HISTORY_MESSAGES).filter((msg: any) =>
+        msg && typeof msg.content === 'string' && msg.content.length <= MAX_MESSAGE_LENGTH
+      ).map((msg: any) => ({
         role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content }]
+        parts: [{ text: msg.content.trim() }]
       })) || [];
 
       const chatSession = ai.chats.create({
@@ -165,6 +173,11 @@ async function startServer() {
         
         if (payload.type === 'audio_transcript') {
           // This represents the transcript of the audio sent from the client
+          if (typeof payload.text !== 'string' || !payload.text.trim()) {
+            ws.send(JSON.stringify({ error: 'El mensaje no es válido.' }));
+            return;
+          }
+
           const response = await chatSession.sendMessage({ message: payload.text });
           const jsonResponse = JSON.parse(response.text || "{}");
           
@@ -175,6 +188,9 @@ async function startServer() {
         }
       } catch (err) {
         console.error("WebSocket message error", err);
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ error: "No se pudo procesar el mensaje." }));
+        }
       }
     });
 

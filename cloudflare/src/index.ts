@@ -4,6 +4,21 @@ export interface Env {
   ASSETS: { fetch: typeof fetch };
 }
 
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_HISTORY_MESSAGES = 8;
+
+const normalizeHistory = (history?: Array<{ role?: string; content?: string }>) => {
+  if (!Array.isArray(history)) return [];
+
+  return history
+    .filter((msg) => msg && typeof msg.content === 'string' && msg.content.trim())
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((msg) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content.trim() }]
+    }));
+};
+
 const systemInstruction = `Eres el "Profe Juan", un tutor de refuerzo escolar inteligente, cálido y empático para niños de Educación General Básica (EGB) de la Malla Curricular Oficial de Ecuador (Ministerio de Educación).
 
 TU OBJETIVO PRINCIPAL:
@@ -39,9 +54,8 @@ export default {
     const cleanPath = url.pathname.replace(/\/+$/, "") || "/";
 
     const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type",
     };
 
     const makeJsonResponse = (data: any, status = 200) => {
@@ -71,6 +85,7 @@ export default {
 
         // Mantenemos el historial de la conversación en la sesión del WebSocket
         const sessionHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+        let isProcessing = false;
 
         server.addEventListener("message", async (event) => {
           try {
@@ -86,10 +101,23 @@ export default {
             }
 
             if (payload.type === "audio_transcript") {
-              const textMessage = payload.text;
+              const textMessage = typeof payload.text === "string" ? payload.text.trim() : "";
+
+              if (!textMessage || textMessage.length > MAX_MESSAGE_LENGTH) {
+                server.send(JSON.stringify({ error: "El mensaje debe tener entre 1 y 2000 caracteres." }));
+                return;
+              }
+
+              if (isProcessing) {
+                server.send(JSON.stringify({ error: "Espera la respuesta anterior antes de enviar otro mensaje." }));
+                return;
+              }
+
+              isProcessing = true;
               
               if (!env.GEMINI_API_KEY) {
                 server.send(JSON.stringify({ error: "Falta la GEMINI_API_KEY en Cloudflare" }));
+                isProcessing = false;
                 return;
               }
 
@@ -98,6 +126,9 @@ export default {
                 role: "user",
                 parts: [{ text: textMessage }]
               });
+              if (sessionHistory.length > MAX_HISTORY_MESSAGES) {
+                sessionHistory.splice(0, sessionHistory.length - MAX_HISTORY_MESSAGES);
+              }
 
               // Llamada a Gemini 3.6 Flash con esquema JSON
               const geminiResponse = await fetch(
@@ -130,12 +161,16 @@ export default {
 
               const aiData: any = await geminiResponse.json();
               
-              if (aiData.error) {
-                server.send(JSON.stringify({ error: "Error de Gemini: " + aiData.error.message }));
+              if (!geminiResponse.ok || aiData.error) {
+                server.send(JSON.stringify({ error: "No se pudo obtener una respuesta del tutor." }));
                 return;
               }
 
-              const responseText = aiData.candidates[0].content.parts[0].text;
+              const responseText = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (typeof responseText !== "string") {
+                server.send(JSON.stringify({ error: "La respuesta del tutor no tiene un formato válido." }));
+                return;
+              }
               const parsedResponse = JSON.parse(responseText);
 
               // Guardar la respuesta del modelo en la memoria de la sesión
@@ -170,7 +205,9 @@ export default {
             }
           } catch (err: any) {
             console.error("Error procesando mensaje WebSocket:", err);
-            server.send(JSON.stringify({ error: "Error interno: " + err.message }));
+            server.send(JSON.stringify({ error: "No se pudo procesar el mensaje." }));
+          } finally {
+            isProcessing = false;
           }
         });
 
@@ -192,10 +229,10 @@ export default {
 
         try {
           const body: any = await request.json();
-          const textMessage = body.message;
+          const textMessage = typeof body.message === "string" ? body.message.trim() : "";
 
-          if (!textMessage) {
-            return makeJsonResponse({ error: "Falta el mensaje en la solicitud" }, 400);
+          if (!textMessage || textMessage.length > MAX_MESSAGE_LENGTH) {
+            return makeJsonResponse({ error: "El mensaje debe tener entre 1 y 2000 caracteres." }, 400);
           }
 
           if (!env.GEMINI_API_KEY) {
@@ -203,9 +240,11 @@ export default {
           }
 
           const formattedHistory = Array.isArray(body.history) 
-            ? body.history.map((msg: any) => ({
+            ? body.history.slice(-MAX_HISTORY_MESSAGES).filter((msg: any) =>
+                msg && typeof msg.content === "string" && msg.content.length <= MAX_MESSAGE_LENGTH
+              ).map((msg: any) => ({
                 role: msg.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: msg.content }]
+                parts: [{ text: msg.content.trim() }]
               }))
             : [];
           formattedHistory.push({ role: "user", parts: [{ text: textMessage }] });
@@ -239,11 +278,16 @@ export default {
           );
 
           const aiData: any = await geminiResponse.json();
-          if (aiData.error) {
-            return makeJsonResponse({ error: "Error de Gemini: " + aiData.error.message }, 500);
+          if (!geminiResponse.ok || aiData.error) {
+            return makeJsonResponse({ error: "No se pudo obtener una respuesta del tutor." }, 502);
           }
 
-          const parsedResponse = JSON.parse(aiData.candidates[0].content.parts[0].text);
+          const responseText = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (typeof responseText !== "string") {
+            return makeJsonResponse({ error: "La respuesta del tutor no tiene un formato válido." }, 502);
+          }
+
+          const parsedResponse = JSON.parse(responseText);
 
           if (env.DB) {
             try {

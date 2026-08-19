@@ -34,6 +34,8 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const pingIntervalRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cargar historial de la Base de Datos D1
   const fetchHistory = useCallback(async () => {
@@ -64,7 +66,11 @@ export default function App() {
 
   // Inicializar y mantener la conexión WebSocket con Cloudflare Realtime Kit
   useEffect(() => {
+    let disposed = false;
+
     const connectWebSocket = () => {
+      if (disposed) return;
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/session/connect`;
       
@@ -122,20 +128,24 @@ export default function App() {
       ws.onerror = () => {
         console.warn("Estado del WebSocket: Conexión interrumpida o no disponible, usando fallback HTTP.");
         setWsConnected(false);
+        setIsProcessing(false);
       };
 
       ws.onclose = () => {
         setWsConnected(false);
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-        // Reconexión automática
-        setTimeout(connectWebSocket, 5000);
+        if (!disposed) {
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
+        }
       };
     };
 
     connectWebSocket();
 
     return () => {
+      disposed = true;
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (wsRef.current) wsRef.current.close();
     };
   }, []);

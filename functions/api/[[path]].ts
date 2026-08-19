@@ -27,15 +27,29 @@ REGLAS DE INTERACCIÓN Y VOZ:
 3. TONO Y LENGUAJE ECUATORIANO: Usa un español ecuatoriano cálido, motivador y cercano. Utiliza expresiones respetuosas como "¡Excelente trabajo!", "Vamos a intentarlo juntos", y reconoce vocabulario local (ej. choclo, funda, chapa, granos).
 4. PEDAGOGÍA SOCRÁTICA: Si el niño se equivoca, no le des la respuesta correcta. Hazle una pregunta sencilla para que revise sus objetos en la mesa.`;
 
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_HISTORY_MESSAGES = 8;
+
+const normalizeHistory = (history?: any[]) => {
+  if (!Array.isArray(history)) return [];
+
+  return history
+    .filter((msg) => msg && typeof msg.content === 'string' && msg.content.trim())
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((msg) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content.trim() }]
+    }));
+};
+
 export async function onRequest(context: { request: Request; env: any }): Promise<Response> {
   const { request, env } = context;
   const url = new URL(request.url);
   const cleanPath = url.pathname.replace(/\/+$/, "") || "/";
 
   const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type",
   };
 
   const makeJsonResponse = (data: any, status = 200) => {
@@ -64,10 +78,10 @@ export async function onRequest(context: { request: Request; env: any }): Promis
 
     try {
       const body: any = await request.json();
-      const textMessage = body.message;
+      const textMessage = typeof body.message === "string" ? body.message.trim() : "";
 
-      if (!textMessage) {
-        return makeJsonResponse({ error: "Falta el mensaje en la solicitud" }, 400);
+      if (!textMessage || textMessage.length > MAX_MESSAGE_LENGTH) {
+        return makeJsonResponse({ error: "El mensaje debe tener entre 1 y 2000 caracteres." }, 400);
       }
 
       if (!env.GEMINI_API_KEY) {
@@ -75,9 +89,11 @@ export async function onRequest(context: { request: Request; env: any }): Promis
       }
 
       const formattedHistory = Array.isArray(body.history) 
-        ? body.history.map((msg: any) => ({
+        ? body.history.slice(-MAX_HISTORY_MESSAGES).filter((msg: any) =>
+            msg && typeof msg.content === "string" && msg.content.length <= MAX_MESSAGE_LENGTH
+          ).map((msg: any) => ({
             role: msg.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: msg.content }]
+            parts: [{ text: msg.content.trim() }]
           }))
         : [];
       formattedHistory.push({ role: "user", parts: [{ text: textMessage }] });
@@ -111,11 +127,16 @@ export async function onRequest(context: { request: Request; env: any }): Promis
       );
 
       const aiData: any = await geminiResponse.json();
-      if (aiData.error) {
-        return makeJsonResponse({ error: "Error de Gemini: " + aiData.error.message }, 500);
+      if (!geminiResponse.ok || aiData.error) {
+        return makeJsonResponse({ error: "No se pudo obtener una respuesta del tutor." }, 502);
       }
 
-      const parsedResponse = JSON.parse(aiData.candidates[0].content.parts[0].text);
+      const responseText = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (typeof responseText !== "string") {
+        return makeJsonResponse({ error: "La respuesta del tutor no tiene un formato válido." }, 502);
+      }
+
+      const parsedResponse = JSON.parse(responseText);
 
       if (env.DB) {
         try {
