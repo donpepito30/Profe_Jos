@@ -84,7 +84,8 @@ export async function onRequest(context: { request: Request; env: any }): Promis
         return makeJsonResponse({ error: "El mensaje debe tener entre 1 y 2000 caracteres." }, 400);
       }
 
-      if (!env.GEMINI_API_KEY) {
+      const apiKey = env.GEMINI_API_KEY || env.GEMIN || env.GEMINI;
+      if (!apiKey) {
         return makeJsonResponse({ error: "Falta configurar GEMINI_API_KEY en las variables de Cloudflare" }, 500);
       }
 
@@ -99,7 +100,7 @@ export async function onRequest(context: { request: Request; env: any }): Promis
       formattedHistory.push({ role: "user", parts: [{ text: textMessage }] });
 
       const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

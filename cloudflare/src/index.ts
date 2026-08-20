@@ -1,7 +1,13 @@
 export interface Env {
   DB?: D1Database;
-  GEMINI_API_KEY: string;
+  GEMINI_API_KEY?: string;
+  GEMIN?: string;
+  GEMINI?: string;
   ASSETS: { fetch: typeof fetch };
+}
+
+function getGeminiApiKey(env: Env): string | undefined {
+  return env.GEMINI_API_KEY || env.GEMIN || env.GEMINI;
 }
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -115,7 +121,8 @@ export default {
 
               isProcessing = true;
               
-              if (!env.GEMINI_API_KEY) {
+              const apiKey = getGeminiApiKey(env);
+              if (!apiKey) {
                 server.send(JSON.stringify({ error: "Falta la GEMINI_API_KEY en Cloudflare" }));
                 isProcessing = false;
                 return;
@@ -132,7 +139,7 @@ export default {
 
               // Llamada a Gemini 3.6 Flash con esquema JSON
               const geminiResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -235,7 +242,8 @@ export default {
             return makeJsonResponse({ error: "El mensaje debe tener entre 1 y 2000 caracteres." }, 400);
           }
 
-          if (!env.GEMINI_API_KEY) {
+          const apiKey = getGeminiApiKey(env);
+          if (!apiKey) {
             return makeJsonResponse({ error: "Falta configurar GEMINI_API_KEY en las variables de Cloudflare" }, 500);
           }
 
@@ -250,7 +258,7 @@ export default {
           formattedHistory.push({ role: "user", parts: [{ text: textMessage }] });
 
           const geminiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },

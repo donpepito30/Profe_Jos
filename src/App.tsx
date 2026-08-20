@@ -30,6 +30,7 @@ export default function App() {
   const [selectedSubject, setSelectedSubject] = useState<string>('TODOS');
   const [selectedSublevel, setSelectedSublevel] = useState<string>('TODOS');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [handsFreeMode, setHandsFreeMode] = useState<boolean>(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
@@ -294,6 +295,8 @@ export default function App() {
             isProcessing={isProcessing}
             isSpeaking={isSpeaking}
             onStopSpeaking={stopSpeaking}
+            handsFreeMode={handsFreeMode}
+            onToggleHandsFree={() => setHandsFreeMode(!handsFreeMode)}
           />
 
           <div className="mt-8 text-center bg-blue-50/80 border border-blue-100 rounded-2xl p-4 max-w-xs">
